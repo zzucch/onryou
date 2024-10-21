@@ -11,6 +11,9 @@ use hyper::{Method, Request, Response, StatusCode, Uri};
 use hyper_util::rt::TokioIo;
 use tokio::net::{TcpListener, TcpStream};
 
+// TODO: make proper auto-search or configuration
+const ANKI_FILE_DIR: &str = "~/.local/share/Anki2/User 1/collection.media";
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
@@ -100,13 +103,9 @@ async fn handle_post(
 
     let body_json: Result<serde_json::Value, _> = serde_json::from_reader(collected_body.reader());
 
-    let modified_body_json = match body_json {
-        Ok(json) => modify_body(json),
-        Err(err) => {
-            log::error!("failed to parse json: {:?}", err);
-            todo!();
-        }
-    };
+    let mut json = body_json.unwrap();
+
+    let modified_body_json = modify_body(&mut json);
 
     let modified_body_json = modified_body_json.unwrap();
     let body_string = modified_body_json.to_string();
@@ -131,8 +130,34 @@ async fn handle_post(
     Ok(response.map(|b| b.boxed()))
 }
 
-fn modify_body(body: serde_json::Value) -> Result<serde_json::Value, ()> {
+fn modify_body(body: &mut serde_json::Value) -> Result<&mut serde_json::Value, ()> {
     log::debug!("parsed body: {:?}", body);
+
+    let action = body.get("action").unwrap().as_str().unwrap();
+
+    match action {
+        "updateNoteFields" => {
+            body.get_mut("params")
+                .and_then(|params| params.get_mut("note"))
+                .and_then(|note| note.get_mut("fields"))
+                .and_then(|fields| fields.as_object_mut())
+                .map(|fields_map| {
+                    for (_, value) in fields_map.iter_mut() {
+                        if let Some(value) = value.as_str() {
+                            if value.starts_with("[sound:") {
+                                let file_path =
+                                    value.trim_start_matches("[sound:").trim_end_matches(']');
+                                let full_path = format!("{}/{}", ANKI_FILE_DIR, file_path);
+
+                                log::info!("found sound file path: {}", full_path);
+                            }
+                        }
+                    }
+                });
+        }
+        // perhaps modify it here?? "storeMediaFile" => {}
+        _ => {}
+    }
 
     Ok(body)
 }
