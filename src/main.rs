@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
 use http_body_util::{combinators::BoxBody, BodyExt, Empty, Full};
-use hyper::body::Bytes;
+use hyper::body::{Buf, Bytes};
 use hyper::client::conn::http1::Builder;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
@@ -66,9 +66,9 @@ async fn proxy(
                 }
             });
 
-            let resp = sender.send_request(req).await?;
+            let response = sender.send_request(req).await?;
 
-            Ok(resp.map(|b| b.boxed()))
+            Ok(response.map(|b| b.boxed()))
         }
     }
 }
@@ -96,12 +96,22 @@ async fn handle_post(
     });
 
     let (parts, body) = req.into_parts();
-    let collected_body = body.collect().await?;
-    let body_bytes = collected_body.to_bytes();
-    let body_str =
-        String::from_utf8(body_bytes.to_vec()).unwrap_or_else(|_| "<invalid UTF-8>".to_string());
+    let collected_body = body.collect().await?.aggregate();
 
-    log::debug!("parts: {:?}\nbody: {:?}", parts, body_str);
+    let body_json: Result<serde_json::Value, _> = serde_json::from_reader(collected_body.reader());
+
+    let modified_body_json = match body_json {
+        Ok(json) => modify_body(json),
+        Err(err) => {
+            log::error!("failed to parse json: {:?}", err);
+            todo!();
+        }
+    };
+
+    let modified_body_json = modified_body_json.unwrap();
+    let body_string = modified_body_json.to_string();
+
+    log::debug!("parts: {:?}", parts);
 
     let mut request_builder = Request::builder()
         .method(parts.method)
@@ -112,11 +122,19 @@ async fn handle_post(
         request_builder = request_builder.header(name, value);
     }
 
-    let request = request_builder.body(Empty::<Bytes>::new()).unwrap();
+    let request = request_builder
+        .body(Full::new(Bytes::from(body_string)))
+        .unwrap();
 
-    let resp = sender.send_request(request).await?;
+    let response = sender.send_request(request).await?;
 
-    Ok(resp.map(|b| b.boxed()))
+    Ok(response.map(|b| b.boxed()))
+}
+
+fn modify_body(body: serde_json::Value) -> Result<serde_json::Value, ()> {
+    log::debug!("parsed body: {:?}", body);
+
+    Ok(body)
 }
 
 // Received an HTTP request like:
@@ -153,10 +171,10 @@ fn handle_connect(
         None => {
             log::error!("CONNECT host is not socket address: {:?}", req.uri());
 
-            let mut resp = Response::new(full("CONNECT must be to a socket address"));
-            *resp.status_mut() = StatusCode::BAD_REQUEST;
+            let mut response = Response::new(full("CONNECT must be to a socket address"));
+            *response.status_mut() = StatusCode::BAD_REQUEST;
 
-            Ok(resp)
+            Ok(response)
         }
     }
 }
