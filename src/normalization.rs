@@ -33,12 +33,11 @@ pub async fn normalize_audio_file(path: &Path) {
     if output.status.success() {
         fs::rename(temp_output_path.clone(), input_path)
             .expect("failed to rename temp file to original");
-        fs::copy(input_path, temp_output_path.clone()).unwrap();
         log::info!("completed audio normalization, output file: {}", input_path);
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
         log::error!("failed to perform normalization: {}", stderr);
 
-        // let _ = fs::remove_file(temp_output_path);
+        let _ = fs::remove_file(temp_output_path);
     }
 }
