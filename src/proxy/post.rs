@@ -37,15 +37,12 @@ pub async fn handle_post(
     let collected_body = body.collect().await?.aggregate();
 
     let body_json: Result<serde_json::Value, _> = serde_json::from_reader(collected_body.reader());
-
     let mut json = body_json.unwrap();
 
-    let modified_body_json = modify_body(anki_file_directory, &mut json);
-
-    let modified_body_json = modified_body_json.unwrap();
+    let modified_body_json = modify_body(anki_file_directory, &mut json).await.unwrap();
     let body_string = modified_body_json.to_string();
 
-    log::debug!("parts: {:?}", parts);
+    log::trace!("parts: {:?}", parts);
 
     let mut request_builder = Request::builder()
         .method(parts.method)
@@ -65,7 +62,7 @@ pub async fn handle_post(
     Ok(response.map(|b| b.boxed()))
 }
 
-fn modify_body<'a>(
+async fn modify_body<'a>(
     anki_file_directory: &str,
     body: &'a mut serde_json::Value,
 ) -> Result<&'a mut serde_json::Value, ()> {
@@ -75,26 +72,27 @@ fn modify_body<'a>(
 
     match action {
         "updateNoteFields" => {
-            body.get_mut("params")
+            if let Some(fields) = body
+                .get_mut("params")
                 .and_then(|params| params.get_mut("note"))
                 .and_then(|note| note.get_mut("fields"))
                 .and_then(|fields| fields.as_object_mut())
-                .map(|fields_map| {
-                    for (_, value) in fields_map.iter_mut() {
-                        if let Some(field_value) = value.as_str() {
-                            if field_value.starts_with("[sound:") {
-                                let filename = field_value
-                                    .trim_start_matches("[sound:")
-                                    .trim_end_matches(']');
-                                let file_path = format!("{}/{}", anki_file_directory, filename);
+            {
+                for (_, value) in fields.iter_mut() {
+                    if let Some(field_value) = value.as_str() {
+                        if field_value.starts_with("[sound:") {
+                            let filename = field_value
+                                .trim_start_matches("[sound:")
+                                .trim_end_matches(']');
+                            let file_path = format!("{}/{}", anki_file_directory, filename);
 
-                                log::info!("found sound file path: {}", file_path);
+                            log::info!("found sound file path: {}", file_path);
 
-                                normalization::normalize_audio_file(Path::new(&file_path));
-                            }
+                            normalization::normalize_audio_file(Path::new(&file_path)).await;
                         }
                     }
-                });
+                }
+            };
         }
         // perhaps modify it here?? "storeMediaFile" => {}
         _ => {}

@@ -5,6 +5,7 @@ use hyper::{Request, Response, StatusCode, Uri};
 
 use hyper_util::rt::TokioIo;
 use tokio::net::TcpStream;
+
 // Received an HTTP request like:
 // ```
 // CONNECT www.domain.com:443 HTTP/1.1

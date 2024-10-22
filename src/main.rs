@@ -7,7 +7,7 @@ use hyper_util::rt::TokioIo;
 use tokio::net::TcpListener;
 
 // TODO: make proper auto-search or configuration
-const ANKI_MEDIA_DIRECTORY: &str = "~/.local/share/Anki2/User 1/collection.media";
+const ANKI_MEDIA_DIRECTORY: &str = "/home/zcchr/.local/share/Anki2/User 1/collection.media";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
