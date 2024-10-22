@@ -42,17 +42,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn proxy(
-    req: Request<hyper::body::Incoming>,
+    request: Request<hyper::body::Incoming>,
 ) -> Result<Response<BoxBody<Bytes, hyper::Error>>, hyper::Error> {
-    log::debug!("req: {:?}", req);
+    log::debug!("request: {:?}", request);
 
     const HOST: &str = "127.0.0.1";
     const PORT: u16 = 8765;
 
-    match req.method() {
-        &Method::POST => handle_post(HOST, PORT, req).await,
+    match request.method() {
+        &Method::POST => handle_post(HOST, PORT, request).await,
         // i don't think this would be of any use but whatever
-        &Method::CONNECT => handle_connect(req),
+        &Method::CONNECT => handle_connect(request),
         _ => {
             let stream = TcpStream::connect((HOST, PORT)).await.unwrap();
             let io = TokioIo::new(stream);
@@ -69,7 +69,7 @@ async fn proxy(
                 }
             });
 
-            let response = sender.send_request(req).await?;
+            let response = sender.send_request(request).await?;
 
             Ok(response.map(|b| b.boxed()))
         }
@@ -79,9 +79,9 @@ async fn proxy(
 async fn handle_post(
     host: &str,
     port: u16,
-    req: Request<hyper::body::Incoming>,
+    request: Request<hyper::body::Incoming>,
 ) -> Result<Response<BoxBody<Bytes, hyper::Error>>, hyper::Error> {
-    log::debug!("hadling post");
+    log::debug!("handling post");
 
     let stream = TcpStream::connect((host, port)).await.unwrap();
     let io = TokioIo::new(stream);
@@ -98,7 +98,7 @@ async fn handle_post(
         }
     });
 
-    let (parts, body) = req.into_parts();
+    let (parts, body) = request.into_parts();
     let collected_body = body.collect().await?.aggregate();
 
     let body_json: Result<serde_json::Value, _> = serde_json::from_reader(collected_body.reader());
@@ -131,7 +131,7 @@ async fn handle_post(
 }
 
 fn modify_body(body: &mut serde_json::Value) -> Result<&mut serde_json::Value, ()> {
-    log::debug!("parsed body: {:?}", body);
+    log::debug!("json body: {:?}", body);
 
     let action = body.get("action").unwrap().as_str().unwrap();
 
@@ -143,13 +143,14 @@ fn modify_body(body: &mut serde_json::Value) -> Result<&mut serde_json::Value, (
                 .and_then(|fields| fields.as_object_mut())
                 .map(|fields_map| {
                     for (_, value) in fields_map.iter_mut() {
-                        if let Some(value) = value.as_str() {
-                            if value.starts_with("[sound:") {
-                                let file_path =
-                                    value.trim_start_matches("[sound:").trim_end_matches(']');
-                                let full_path = format!("{}/{}", ANKI_FILE_DIR, file_path);
+                        if let Some(field_value) = value.as_str() {
+                            if field_value.starts_with("[sound:") {
+                                let filename = field_value
+                                    .trim_start_matches("[sound:")
+                                    .trim_end_matches(']');
+                                let file_path = format!("{}/{}", ANKI_FILE_DIR, filename);
 
-                                log::info!("found sound file path: {}", full_path);
+                                log::info!("found sound file path: {}", file_path);
                             }
                         }
                     }
@@ -176,12 +177,12 @@ fn modify_body(body: &mut serde_json::Value) -> Result<&mut serde_json::Value, (
 // connection be upgraded, so we can't return a response inside
 // `on_upgrade` future.
 fn handle_connect(
-    req: Request<hyper::body::Incoming>,
+    request: Request<hyper::body::Incoming>,
 ) -> Result<Response<BoxBody<Bytes, hyper::Error>>, hyper::Error> {
-    match host_address(req.uri()) {
+    match host_address(request.uri()) {
         Some(address) => {
             tokio::task::spawn(async move {
-                match hyper::upgrade::on(req).await {
+                match hyper::upgrade::on(request).await {
                     Ok(upgraded) => {
                         if let Err(err) = tunnel(upgraded, address).await {
                             log::error!("server io error: {}", err);
@@ -194,7 +195,7 @@ fn handle_connect(
             Ok(Response::new(empty()))
         }
         None => {
-            log::error!("CONNECT host is not socket address: {:?}", req.uri());
+            log::error!("CONNECT host is not socket address: {:?}", request.uri());
 
             let mut response = Response::new(full("CONNECT must be to a socket address"));
             *response.status_mut() = StatusCode::BAD_REQUEST;
