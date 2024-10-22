@@ -66,12 +66,12 @@ async fn modify_body<'a>(
     anki_file_directory: &str,
     body: &'a mut serde_json::Value,
 ) -> Result<&'a mut serde_json::Value, ()> {
-    log::debug!("json body: {:?}", body);
+    log::trace!("json body: {:?}", body);
 
     let action = body.get("action").unwrap().as_str().unwrap();
 
     match action {
-        "updateNoteFields" => {
+        "addNote" | "updateNoteFields" => {
             if let Some(fields) = body
                 .get_mut("params")
                 .and_then(|params| params.get_mut("note"))
