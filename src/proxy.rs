@@ -20,10 +20,10 @@ pub async fn handle_request(
     const HOST: &str = "127.0.0.1";
     const PORT: u16 = 8765;
 
-    match request.method() {
-        &Method::POST => handle_post(HOST, PORT, anki_media_directory, request).await,
+    match *request.method() {
+        Method::POST => handle_post(HOST, PORT, anki_media_directory, request).await,
         // i don't think this would be of any use but whatever
-        &Method::CONNECT => handle_connect(request),
+        Method::CONNECT => handle_connect(request),
         _ => {
             let stream = TcpStream::connect((HOST, PORT)).await.unwrap();
             let io = TokioIo::new(stream);

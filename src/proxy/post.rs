@@ -86,7 +86,7 @@ async fn modify_body<'a>(
                                 .trim_end_matches(']');
                             let file_path = format!("{}/{}", anki_file_directory, filename);
 
-                            log::info!("found sound file path: {}", file_path);
+                            log::debug!("found sound file path: {}", file_path);
 
                             normalization::normalize_audio_file(Path::new(&file_path)).await;
                         }
@@ -94,7 +94,6 @@ async fn modify_body<'a>(
                 }
             };
         }
-        // perhaps modify it here?? "storeMediaFile" => {}
         _ => {}
     }
 

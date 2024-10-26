@@ -49,7 +49,7 @@ pub fn handle_connect(
 }
 
 fn host_address(uri: &Uri) -> Option<String> {
-    uri.authority().and_then(|auth| Some(auth.to_string()))
+    uri.authority().map(|auth| auth.to_string())
 }
 
 fn empty() -> BoxBody<Bytes, hyper::Error> {
