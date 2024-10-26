@@ -10,7 +10,7 @@ use tokio::net::TcpStream;
 
 use crate::normalization;
 
-pub async fn handle_post(
+pub async fn handle(
     host: &str,
     port: u16,
     anki_file_directory: &str,
@@ -49,7 +49,7 @@ pub async fn handle_post(
         .uri(parts.uri)
         .version(parts.version);
 
-    for (name, value) in parts.headers.iter() {
+    for (name, value) in &parts.headers {
         request_builder = request_builder.header(name, value);
     }
 
@@ -59,7 +59,7 @@ pub async fn handle_post(
 
     let response = sender.send_request(request).await?;
 
-    Ok(response.map(|b| b.boxed()))
+    Ok(response.map(http_body_util::BodyExt::boxed))
 }
 
 async fn modify_body<'a>(
@@ -84,7 +84,7 @@ async fn modify_body<'a>(
                             let filename = field_value
                                 .trim_start_matches("[sound:")
                                 .trim_end_matches(']');
-                            let file_path = format!("{}/{}", anki_file_directory, filename);
+                            let file_path = format!("{anki_file_directory}/{filename}");
 
                             log::debug!("found sound file path: {}", file_path);
 

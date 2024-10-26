@@ -19,37 +19,32 @@ use tokio::net::TcpStream;
 // Note: only after client received an empty body with STATUS_OK can the
 // connection be upgraded, so we can't return a response inside
 // `on_upgrade` future.
-pub fn handle_connect(
-    request: Request<hyper::body::Incoming>,
-) -> Result<Response<BoxBody<Bytes, hyper::Error>>, hyper::Error> {
-    match host_address(request.uri()) {
-        Some(address) => {
-            tokio::task::spawn(async move {
-                match hyper::upgrade::on(request).await {
-                    Ok(upgraded) => {
-                        if let Err(err) = tunnel(upgraded, address).await {
-                            log::error!("server io error: {}", err);
-                        };
-                    }
-                    Err(err) => log::error!("upgrade error: {}", err),
+pub fn handle(request: Request<hyper::body::Incoming>) -> Response<BoxBody<Bytes, hyper::Error>> {
+    if let Some(address) = host_address(request.uri()) {
+        tokio::task::spawn(async move {
+            match hyper::upgrade::on(request).await {
+                Ok(upgraded) => {
+                    if let Err(err) = tunnel(upgraded, address).await {
+                        log::error!("server io error: {}", err);
+                    };
                 }
-            });
+                Err(err) => log::error!("upgrade error: {}", err),
+            }
+        });
 
-            Ok(Response::new(empty()))
-        }
-        None => {
-            log::error!("CONNECT host is not socket address: {:?}", request.uri());
+        Response::new(empty())
+    } else {
+        log::error!("CONNECT host is not socket address: {:?}", request.uri());
 
-            let mut response = Response::new(full("CONNECT must be to a socket address"));
-            *response.status_mut() = StatusCode::BAD_REQUEST;
+        let mut response = Response::new(full("CONNECT must be to a socket address"));
+        *response.status_mut() = StatusCode::BAD_REQUEST;
 
-            Ok(response)
-        }
+        response
     }
 }
 
 fn host_address(uri: &Uri) -> Option<String> {
-    uri.authority().map(|auth| auth.to_string())
+    uri.authority().map(std::string::ToString::to_string)
 }
 
 fn empty() -> BoxBody<Bytes, hyper::Error> {
