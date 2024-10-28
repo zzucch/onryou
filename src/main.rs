@@ -12,7 +12,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
     let anki_media_directory = get_anki_media_directory();
-    let anki_media_directory_path_str = anki_media_directory.to_str().unwrap().to_owned();
+    let anki_media_directory_path_str = anki_media_directory.await.unwrap().to_string().to_owned();
+    log::info!("using media directory {}", anki_media_directory_path_str);
 
     let address = SocketAddr::from(([127, 0, 0, 1], 8100));
     let listener = TcpListener::bind(address).await?;

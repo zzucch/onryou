@@ -1,18 +1,27 @@
-use dirs::home_dir;
-use std::path::PathBuf;
+use reqwest::Client;
+use serde_json::json;
+use std::error::Error;
 
-pub fn get_anki_media_directory() -> PathBuf {
-    let mut path = home_dir().expect("failed to get home directory");
+// TODO: perhaps request permission beforehand?
+pub async fn get_anki_media_directory() -> Result<String, Box<dyn Error>> {
+    const ANKICONNECT_URL: &str = "http://127.0.0.1:8765";
 
-    if cfg!(target_os = "windows") {
-        path.push("AppData/Roaming/Anki2");
-    } else if cfg!(target_os = "macos") {
-        path.push("Library/Application Support/Anki2");
+    let request_body = json!({
+        "action": "getMediaDirPath",
+        "version": 6
+    });
+
+    let client = Client::new();
+    let response = client
+        .post(ANKICONNECT_URL)
+        .json(&request_body)
+        .send()
+        .await?;
+
+    let result: serde_json::Value = response.json().await?;
+    if let Some(error) = result["error"].as_str() {
+        Err(format!("AnkiConnect Error: {}", error).into())
     } else {
-        path.push(".local/share/Anki2");
+        Ok(result["result"].as_str().unwrap_or("").to_string())
     }
-
-    // TODO: add getting current user somehow
-    path.push("User 1/collection.media");
-    path
 }
