@@ -11,8 +11,9 @@ use tokio::net::TcpListener;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
+    // TODO: perhaps request permission beforehand?
     let anki_media_directory = get_anki_media_directory();
-    let anki_media_directory_path_str = anki_media_directory.await.unwrap().to_string().to_owned();
+    let anki_media_directory_path_str = anki_media_directory.await.unwrap().to_string().clone();
     log::info!("using media directory {}", anki_media_directory_path_str);
 
     let address = SocketAddr::from(([127, 0, 0, 1], 8100));
