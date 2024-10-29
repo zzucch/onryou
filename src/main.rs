@@ -1,3 +1,4 @@
+use std::env;
 use std::net::SocketAddr;
 
 use hyper::server::conn::http1;
@@ -9,6 +10,9 @@ use tokio::net::TcpListener;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    if env::var("RUST_LOG").is_err() {
+        env::set_var("RUST_LOG", "info")
+    }
     env_logger::init();
 
     // TODO: perhaps request permission beforehand?
