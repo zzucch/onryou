@@ -5,7 +5,7 @@ use anyhow::{anyhow, Context};
 use tokio::process::Command;
 
 pub async fn normalize_audio_file(path: &Path) -> anyhow::Result<()> {
-    let input_path = path.to_str().context("invalid path")?;
+    let input_path = path.to_str().with_context(|| "invalid path")?;
     let filename = path
         .file_name()
         .ok_or_else(|| anyhow!("failed to retrieve filename from path"))?
@@ -27,11 +27,11 @@ pub async fn normalize_audio_file(path: &Path) -> anyhow::Result<()> {
         ])
         .output()
         .await
-        .context("failed to execute ffmpeg")?;
+        .with_context(|| "failed to execute ffmpeg")?;
 
     if output.status.success() {
         fs::rename(temporary_output_path.clone(), input_path)
-            .context("failed to rename temp file to original")?;
+            .with_context(|| "failed to rename temp file to original")?;
         log::info!("completed audio normalization, output file: {}", input_path);
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);

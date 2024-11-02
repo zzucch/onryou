@@ -72,9 +72,9 @@ async fn modify_body<'a>(
 
     let action = body
         .get("action")
-        .context("every ankiconnect request must contain an action")?
+        .with_context(|| "every ankiconnect request must contain an action")?
         .as_str()
-        .context("request field 'action' must contain some value")?;
+        .with_context(|| "request field 'action' must contain some value")?;
 
     match action {
         "addNote" | "updateNoteFields" => process_note_fields(anki_media_directory, body).await?,
