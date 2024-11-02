@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use anyhow::{Context, Result};
 use http_body_util::{combinators::BoxBody, BodyExt, Full};
 use hyper::body::{Buf, Bytes};
 use hyper::client::conn::http1::Builder;
@@ -18,10 +19,10 @@ pub async fn handle(
     port: u16,
     anki_media_directory: &str,
     request: Request<hyper::body::Incoming>,
-) -> Result<Response<BoxBody<Bytes, hyper::Error>>, hyper::Error> {
+) -> Result<Response<BoxBody<Bytes, hyper::Error>>> {
     log::debug!("handling post");
 
-    let stream = TcpStream::connect((host, port)).await.unwrap();
+    let stream = TcpStream::connect((host, port)).await?;
     let io = TokioIo::new(stream);
 
     let (mut sender, connection) = Builder::new()
@@ -40,9 +41,9 @@ pub async fn handle(
     let collected_body = body.collect().await?.aggregate();
 
     let body_json: Result<serde_json::Value, _> = serde_json::from_reader(collected_body.reader());
-    let mut json = body_json.unwrap();
+    let mut json = body_json?;
 
-    let modified_body_json = modify_body(anki_media_directory, &mut json).await.unwrap();
+    let modified_body_json = modify_body(anki_media_directory, &mut json).await?;
     let body_string = modified_body_json.to_string();
 
     log::trace!("parts: {:?}", parts);
@@ -56,9 +57,7 @@ pub async fn handle(
         request_builder = request_builder.header(name, value);
     }
 
-    let request = request_builder
-        .body(Full::new(Bytes::from(body_string)))
-        .unwrap();
+    let request = request_builder.body(Full::new(Bytes::from(body_string)))?;
 
     let response = sender.send_request(request).await?;
 
@@ -68,20 +67,27 @@ pub async fn handle(
 async fn modify_body<'a>(
     anki_media_directory: &str,
     body: &'a mut serde_json::Value,
-) -> Result<&'a mut serde_json::Value, ()> {
+) -> Result<&'a mut serde_json::Value> {
     log::trace!("json body: {:?}", body);
 
-    let action = body.get("action").unwrap().as_str().unwrap();
+    let action = body
+        .get("action")
+        .context("every ankiconnect request must contain an action")?
+        .as_str()
+        .context("request field 'action' must contain some value")?;
 
     match action {
-        "addNote" | "updateNoteFields" => process_note_fields(anki_media_directory, body).await,
+        "addNote" | "updateNoteFields" => process_note_fields(anki_media_directory, body).await?,
         _ => {}
     }
 
     Ok(body)
 }
 
-async fn process_note_fields<'a>(anki_media_directory: &str, body: &'a mut serde_json::Value) {
+async fn process_note_fields<'a>(
+    anki_media_directory: &str,
+    body: &'a mut serde_json::Value,
+) -> Result<(), anyhow::Error> {
     if let Some(fields) = body
         .get_mut("params")
         .and_then(|params| params.get_mut("note"))
@@ -91,14 +97,19 @@ async fn process_note_fields<'a>(anki_media_directory: &str, body: &'a mut serde
         for (_, value) in fields.iter_mut() {
             if let Some(field_value) = value.as_str() {
                 if field_value.starts_with(SOUND_FIELD_START) {
-                    process_sound_field(field_value, anki_media_directory).await;
+                    process_sound_field(field_value, anki_media_directory).await?;
                 }
             }
         }
     };
+
+    Ok(())
 }
 
-async fn process_sound_field(field_value: &str, anki_media_directory: &str) {
+async fn process_sound_field(
+    field_value: &str,
+    anki_media_directory: &str,
+) -> Result<(), anyhow::Error> {
     let filename = field_value
         .trim_start_matches(SOUND_FIELD_START)
         .trim_end_matches(SOUND_FIELD_END);
@@ -106,5 +117,7 @@ async fn process_sound_field(field_value: &str, anki_media_directory: &str) {
 
     log::debug!("sound file path: {}", file_path);
 
-    normalization::normalize_audio_file(Path::new(&file_path)).await;
+    normalization::normalize_audio_file(Path::new(&file_path)).await?;
+
+    Ok(())
 }

@@ -10,8 +10,8 @@ pub async fn handle(
     host: &str,
     port: u16,
     request: hyper::Request<hyper::body::Incoming>,
-) -> Result<hyper::Response<BoxBody<Bytes, hyper::Error>>, hyper::Error> {
-    let stream = TcpStream::connect((host, port)).await.unwrap();
+) -> anyhow::Result<hyper::Response<BoxBody<Bytes, hyper::Error>>> {
+    let stream = TcpStream::connect((host, port)).await?;
     let io = TokioIo::new(stream);
 
     let (mut sender, connection) = Builder::new()

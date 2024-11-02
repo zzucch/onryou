@@ -1,21 +1,20 @@
 use std::fs;
 use std::path::Path;
 
+use anyhow::{anyhow, Context};
 use tokio::process::Command;
 
-pub async fn normalize_audio_file(path: &Path) {
-    let input_path = path.to_str().expect("invalid path");
-    let temporary_output_path = format!(
-        "./tmp_normalized_{}",
-        path.file_name().unwrap().to_str().unwrap()
-    );
+pub async fn normalize_audio_file(path: &Path) -> anyhow::Result<()> {
+    let input_path = path.to_str().context("invalid path")?;
+    let filename = path
+        .file_name()
+        .ok_or_else(|| anyhow!("failed to retrieve filename from path"))?
+        .to_str()
+        .ok_or_else(|| anyhow!("failed to convert filename to string"))?;
+
+    let temporary_output_path = format!("./tmp_normalized_{filename}");
 
     log::debug!("normalizing {} to {}", input_path, temporary_output_path);
-
-    let supported_extensions = ["mp3", "wav", "flac", "aac", "ogg"];
-    assert!(supported_extensions
-        .iter()
-        .any(|&extension| input_path.ends_with(extension)));
 
     let output = Command::new("ffmpeg")
         .args([
@@ -28,11 +27,11 @@ pub async fn normalize_audio_file(path: &Path) {
         ])
         .output()
         .await
-        .expect("failed to execute ffmpeg");
+        .context("failed to execute ffmpeg")?;
 
     if output.status.success() {
         fs::rename(temporary_output_path.clone(), input_path)
-            .expect("failed to rename temp file to original");
+            .context("failed to rename temp file to original")?;
         log::info!("completed audio normalization, output file: {}", input_path);
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -40,4 +39,6 @@ pub async fn normalize_audio_file(path: &Path) {
 
         let _ = fs::remove_file(temporary_output_path);
     }
+
+    Ok(())
 }

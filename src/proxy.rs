@@ -9,7 +9,7 @@ use hyper::{Method, Request, Response};
 pub async fn handle_request(
     request: Request<hyper::body::Incoming>,
     anki_media_directory: &str,
-) -> Result<Response<BoxBody<Bytes, hyper::Error>>, hyper::Error> {
+) -> anyhow::Result<Response<BoxBody<Bytes, hyper::Error>>> {
     const HOST: &str = "127.0.0.1";
     const PORT: u16 = 8765;
 

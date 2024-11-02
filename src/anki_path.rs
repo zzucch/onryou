@@ -1,6 +1,6 @@
-use std::error::Error;
+use anyhow::bail;
 
-pub async fn get_media_directory(ankiconnect_url: &str) -> Result<String, Box<dyn Error>> {
+pub async fn get_media_directory(ankiconnect_url: &str) -> anyhow::Result<String> {
     let request_body = serde_json::json!({
         "action": "getMediaDirPath",
         "version": 6
@@ -14,9 +14,17 @@ pub async fn get_media_directory(ankiconnect_url: &str) -> Result<String, Box<dy
         .await?;
 
     let result: serde_json::Value = response.json().await?;
+
     if let Some(error) = result["error"].as_str() {
-        Err(format!("ankiconnect error: {error}").into())
-    } else {
-        Ok(result["result"].as_str().unwrap_or("").to_string())
+        bail!("ankiconnect error: {error}")
+    }
+
+    let value = result["result"].as_str();
+    match value {
+        Some(value) => Ok(value.to_string()),
+        None => bail!(
+            "expected anki media directory path in 'result' field, \
+                but got none"
+        ),
     }
 }

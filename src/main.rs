@@ -1,7 +1,7 @@
 use std::env;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() {
     const ANKICONNECT_URL: &str = "http://127.0.0.1:8765";
 
     if env::var("RUST_LOG").is_err() {
@@ -9,19 +9,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     env_logger::init();
 
-    let anki_media_directory_path = onryou::anki_path::get_media_directory(ANKICONNECT_URL)
-        .await
-        .unwrap()
-        .to_string()
-        .clone();
-    log::info!("using media directory {}", anki_media_directory_path);
+    let anki_media_directory_path =
+        match onryou::anki_path::get_media_directory(ANKICONNECT_URL).await {
+            Ok(path) => path.to_string(),
+            Err(err) => {
+                log::error!("failed to retrieve anki media directory: {:?}", err);
+                return;
+            }
+        };
 
     let address = std::net::SocketAddr::from(([127, 0, 0, 1], 8100));
-    let listener = tokio::net::TcpListener::bind(address).await?;
+    let listener = match tokio::net::TcpListener::bind(address).await {
+        Ok(listener) => listener,
+        Err(err) => {
+            log::error!(
+                "failed to bind to address {}: {:?}. ensure the port is \
+                available and not in use by another application",
+                address,
+                err
+            );
+            return;
+        }
+    };
+
     log::info!("listening on http://{}", address);
 
     loop {
-        let (stream, _) = listener.accept().await?;
+        let (stream, _) = match listener.accept().await {
+            Ok(connection) => connection,
+            Err(err) => {
+                log::error!(
+                    "failed to accept incoming connection: {:?}. \
+                    this might be a network or resource issue.",
+                    err
+                );
+                continue;
+            }
+        };
         let io = hyper_util::rt::TokioIo::new(stream);
         let anki_media_directory_path = anki_media_directory_path.clone();
 
