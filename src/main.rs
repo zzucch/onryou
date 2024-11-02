@@ -1,48 +1,44 @@
 use std::env;
-use std::net::SocketAddr;
-
-use hyper::server::conn::http1;
-use hyper::service::service_fn;
-
-use hyper_util::rt::TokioIo;
-use onryou::anki_path::get_anki_media_directory;
-use tokio::net::TcpListener;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    const ANKICONNECT_URL: &str = "http://127.0.0.1:8765";
+
     if env::var("RUST_LOG").is_err() {
-        env::set_var("RUST_LOG", "info")
+        env::set_var("RUST_LOG", "info");
     }
     env_logger::init();
 
-    // TODO: perhaps request permission beforehand?
-    let anki_media_directory = get_anki_media_directory();
-    let anki_media_directory_path_str = anki_media_directory.await.unwrap().to_string().clone();
-    log::info!("using media directory {}", anki_media_directory_path_str);
+    let anki_media_directory_path = onryou::anki_path::get_media_directory(ANKICONNECT_URL)
+        .await
+        .unwrap()
+        .to_string()
+        .clone();
+    log::info!("using media directory {}", anki_media_directory_path);
 
-    let address = SocketAddr::from(([127, 0, 0, 1], 8100));
-    let listener = TcpListener::bind(address).await?;
+    let address = std::net::SocketAddr::from(([127, 0, 0, 1], 8100));
+    let listener = tokio::net::TcpListener::bind(address).await?;
     log::info!("listening on http://{}", address);
 
     loop {
         let (stream, _) = listener.accept().await?;
-        let io = TokioIo::new(stream);
-        let anki_media_directory_path_str = anki_media_directory_path_str.clone();
+        let io = hyper_util::rt::TokioIo::new(stream);
+        let anki_media_directory_path = anki_media_directory_path.clone();
 
         tokio::task::spawn(async move {
-            if let Err(err) = http1::Builder::new()
+            if let Err(err) = hyper::server::conn::http1::Builder::new()
                 .title_case_headers(true)
                 .preserve_header_case(true)
                 .serve_connection(
                     io,
-                    service_fn(|req| {
-                        onryou::proxy::handle_request(req, &anki_media_directory_path_str)
+                    hyper::service::service_fn(|request| {
+                        onryou::proxy::handle_request(request, &anki_media_directory_path)
                     }),
                 )
                 .with_upgrades()
                 .await
             {
-                log::error!("Failed to serve connection: {:?}", err);
+                log::error!("failed to serve connection: {:?}", err);
             }
         });
     }

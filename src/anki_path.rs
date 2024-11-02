@@ -1,8 +1,6 @@
 use std::error::Error;
 
-pub async fn get_anki_media_directory() -> Result<String, Box<dyn Error>> {
-    const ANKICONNECT_URL: &str = "http://127.0.0.1:8765";
-
+pub async fn get_media_directory(ankiconnect_url: &str) -> Result<String, Box<dyn Error>> {
     let request_body = serde_json::json!({
         "action": "getMediaDirPath",
         "version": 6
@@ -10,7 +8,7 @@ pub async fn get_anki_media_directory() -> Result<String, Box<dyn Error>> {
 
     let client = reqwest::Client::new();
     let response = client
-        .post(ANKICONNECT_URL)
+        .post(ankiconnect_url)
         .json(&request_body)
         .send()
         .await?;

@@ -10,10 +10,13 @@ use tokio::net::TcpStream;
 
 use crate::normalization;
 
+const SOUND_FIELD_START: &str = "[sound:";
+const SOUND_FIELD_END: char = ']';
+
 pub async fn handle(
     host: &str,
     port: u16,
-    anki_file_directory: &str,
+    anki_media_directory: &str,
     request: Request<hyper::body::Incoming>,
 ) -> Result<Response<BoxBody<Bytes, hyper::Error>>, hyper::Error> {
     log::debug!("handling post");
@@ -21,14 +24,14 @@ pub async fn handle(
     let stream = TcpStream::connect((host, port)).await.unwrap();
     let io = TokioIo::new(stream);
 
-    let (mut sender, conn) = Builder::new()
+    let (mut sender, connection) = Builder::new()
         .preserve_header_case(true)
         .title_case_headers(true)
         .handshake(io)
         .await?;
 
     tokio::task::spawn(async move {
-        if let Err(err) = conn.await {
+        if let Err(err) = connection.await {
             log::error!("connection failed: {:?}", err);
         }
     });
@@ -39,7 +42,7 @@ pub async fn handle(
     let body_json: Result<serde_json::Value, _> = serde_json::from_reader(collected_body.reader());
     let mut json = body_json.unwrap();
 
-    let modified_body_json = modify_body(anki_file_directory, &mut json).await.unwrap();
+    let modified_body_json = modify_body(anki_media_directory, &mut json).await.unwrap();
     let body_string = modified_body_json.to_string();
 
     log::trace!("parts: {:?}", parts);
@@ -63,7 +66,7 @@ pub async fn handle(
 }
 
 async fn modify_body<'a>(
-    anki_file_directory: &str,
+    anki_media_directory: &str,
     body: &'a mut serde_json::Value,
 ) -> Result<&'a mut serde_json::Value, ()> {
     log::trace!("json body: {:?}", body);
@@ -71,31 +74,37 @@ async fn modify_body<'a>(
     let action = body.get("action").unwrap().as_str().unwrap();
 
     match action {
-        "addNote" | "updateNoteFields" => {
-            if let Some(fields) = body
-                .get_mut("params")
-                .and_then(|params| params.get_mut("note"))
-                .and_then(|note| note.get_mut("fields"))
-                .and_then(|fields| fields.as_object_mut())
-            {
-                for (_, value) in fields.iter_mut() {
-                    if let Some(field_value) = value.as_str() {
-                        if field_value.starts_with("[sound:") {
-                            let filename = field_value
-                                .trim_start_matches("[sound:")
-                                .trim_end_matches(']');
-                            let file_path = format!("{anki_file_directory}/{filename}");
-
-                            log::debug!("found sound file path: {}", file_path);
-
-                            normalization::normalize_audio_file(Path::new(&file_path)).await;
-                        }
-                    }
-                }
-            };
-        }
+        "addNote" | "updateNoteFields" => process_note_fields(anki_media_directory, body).await,
         _ => {}
     }
 
     Ok(body)
+}
+
+async fn process_note_fields<'a>(anki_media_directory: &str, body: &'a mut serde_json::Value) {
+    if let Some(fields) = body
+        .get_mut("params")
+        .and_then(|params| params.get_mut("note"))
+        .and_then(|note| note.get_mut("fields"))
+        .and_then(|fields| fields.as_object_mut())
+    {
+        for (_, value) in fields.iter_mut() {
+            if let Some(field_value) = value.as_str() {
+                if field_value.starts_with(SOUND_FIELD_START) {
+                    process_sound_field(field_value, anki_media_directory).await;
+                }
+            }
+        }
+    };
+}
+
+async fn process_sound_field(field_value: &str, anki_media_directory: &str) {
+    let filename = field_value
+        .trim_start_matches(SOUND_FIELD_START)
+        .trim_end_matches(SOUND_FIELD_END);
+    let file_path = format!("{anki_media_directory}/{filename}");
+
+    log::debug!("sound file path: {}", file_path);
+
+    normalization::normalize_audio_file(Path::new(&file_path)).await;
 }
