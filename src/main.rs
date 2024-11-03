@@ -13,7 +13,11 @@ async fn main() {
         match onryou::anki_path::get_media_directory(ANKICONNECT_URL).await {
             Ok(path) => path.to_string(),
             Err(err) => {
-                log::error!("failed to retrieve anki media directory: {:?}", err);
+                log::error!(
+                    "failed to retrieve anki media directory. \
+                        ensure ankiconnect is running: {:?}",
+                    err
+                );
                 return;
             }
         };
